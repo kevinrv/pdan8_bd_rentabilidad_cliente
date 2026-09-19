@@ -40,11 +40,13 @@ CREATE TABLE productos(
 	nombre VARCHAR(55) NOT NULL,
 	categoria_id INT NOT NULL,
 	tipo_producto VARCHAR(30) NULL,
-	moneda VARCHAR(25) NULL,
-	estado VARCHAR(25) NULL,
+	moneda VARCHAR(25) CHECK (moneda IN ('PEN','USD', 'EUR')) NOT NULL,
+	estado VARCHAR(25)  NOT NULL,
 	CONSTRAINT fk_categoria_productos FOREIGN KEY (categoria_id) REFERENCES categoria_productos(id)
 	);
 
+ALTER TABLE productos
+ADD CONSTRAINT CK_productos_estado CHECK (estado IN ('activo', 'inactivo', 'discontinuado'))
 --- clientes
 
 CREATE TABLE clientes (
@@ -53,10 +55,15 @@ CREATE TABLE clientes (
 	tipo_cliente VARCHAR(1) NOT NULL,
 	fecha_alta DATE DEFAULT(CONVERT(DATE,GETDATE())),
 	estado VARCHAR (25) NOT NULL,
-	segmento_id INT NOT NULL,
+	segmento_id INT NOT NULL,	
 	FOREIGN KEY (segmento_id) REFERENCES segmentos(id)
 );
 
+ALTER TABLE clientes
+ADD CONSTRAINT CK_clientes_tipo CHECK (tipo_cliente IN ('N','J'));
+
+ALTER TABLE clientes
+ADD CHECK (estado IN ('activo', 'inactivo', 'bloqueado'));
 
 -- Persona Juridica
 CREATE TABLE personas_juridicas (
@@ -73,14 +80,14 @@ FOREIGN KEY (cliente_id) REFERENCES clientes (id)
 
 CREATE TABLE personas_naturales (
 id INT IDENTITY (1,1) PRIMARY KEY,
-dni CHAR(11) UNIQUE NOT NULL,
+dni CHAR(8) UNIQUE NOT NULL,
 nombres VARCHAR(155) NOT NULL,
-app VARCHAR(155) NOT NULL,
+app VARCHAR(155) NOT NULL,	
 apm VARCHAR(155) NOT NULL,
 telefono VARCHAR(20) NULL,
 direccion VARCHAR (200) NULL,
 rubro VARCHAR (55) NULL,
-cliente_id INT UNIQUE NOT NULL
+cliente_id INT UNIQUE NOT NULL,
 FOREIGN KEY (cliente_id) REFERENCES clientes (id)
 );
 
@@ -90,9 +97,7 @@ CREATE TABLE periodos (
 id INT IDENTITY (1,1) PRIMARY KEY,
 anio CHAR(4) NOT NULL,
 mes CHAR(2) NOT NULL,
-dia CHAR(2) NOT NULL,
-trimestre CHAR(2) CHECK (trimestre IN ('01','02','03','04')) NOT NULL,
-semestre CHAR(2) CHECK (semestre IN ('01','02')) NOT NULL
+UNIQUE (anio,mes)
 );
  
 EXEC SP_HELP periodos;
@@ -113,19 +118,25 @@ FOREIGN KEY (cliente_id) REFERENCES clientes(id)
 CREATE TABLE operaciones
 ( id INT IDENTITY(1,1) NOT NULL, 
 cliente_id INT NOT NULL, 
-producto_id INT NOT NULL, 
-periodo_id INT NOT NULL,
 canal_id INT NOT NULL,
+contratacion_id INT NOT NULL,
+fecha_operacion DATETIME NOT NULL,
+tipo_operacion VARCHAR (100) NOT NULL,
 importe DECIMAL(18,2) NOT NULL,
 estado VARCHAR(20) NOT NULL,
 CONSTRAINT PK_operaciones PRIMARY KEY (id),
-CONSTRAINT FK_operaciones_clientes FOREIGN KEY (cliente_id) REFERENCES clientes(id),
-CONSTRAINT FK_operaciones_productos FOREIGN KEY (producto_id) REFERENCES productos(id),
-CONSTRAINT FK_operaciones_periodos FOREIGN KEY (periodo_id) REFERENCES periodos(id), 
+CONSTRAINT FK_operaciones_contrataciones FOREIGN KEY (contratacion_id) REFERENCES contrataciones(id), 
 CONSTRAINT FK_operaciones_canales FOREIGN KEY (canal_id) REFERENCES canales(id), 
 CONSTRAINT CK_operaciones_importe CHECK (importe >= 0), 
-CONSTRAINT CK_operaciones_estado CHECK (estado IN ('activo', 'anulado', 'pendiente')) 
+CONSTRAINT CK_operaciones_estado CHECK (estado IN ('activo', 'anulado', 'pendiente')),
+CONSTRAINT CK_tipo_operacion CHECK (tipo_operacion IN ('Compra','Transferencia','Retiro','Pago')) 
 );
+ALTER TABLE operaciones 
+DROP CONSTRAINT  CK_operaciones_estado;
+
+ALTER TABLE operaciones 
+ADD CONSTRAINT CK_operaciones_estado CHECK (estado IN ('pendiente','procesada','anulada'));
+
 
 --- Costos
 
@@ -133,19 +144,26 @@ CREATE TABLE costos (
     id INT IDENTITY(1,1) PRIMARY KEY,
     cliente_id INT NOT NULL,
     producto_id INT NOT NULL,
-    tipo_costo INT NOT NULL,
+    tipo_costo VARCHAR(100) NOT NULL,
     periodo_id INT NOT NULL,
     importe DECIMAL(12,2) CHECK (importe >= 0) NOT NULL,
 	FOREIGN KEY (cliente_id) REFERENCES clientes(id),
 	FOREIGN KEY (producto_id) REFERENCES productos(id),
-	FOREIGN KEY (periodo_id) REFERENCES periodos(id)
+	FOREIGN KEY (periodo_id) REFERENCES periodos(id),
+	CHECK (
+    tipo_costo IN (
+        'operativo',
+        'procesamiento',
+        'canal',
+        'administrativo'
+    )
+)
 	);
 --- Ingresos
 	CREATE TABLE ingresos (
     id INT IDENTITY(1,1) NOT NULL,
     cliente_id INT NOT NULL,
     producto_id INT NOT NULL,
-    operacion_id INT NOT NULL,
     periodo_id INT NOT NULL,
 	importe DECIMAL(12,2) CHECK (importe >= 0) NOT NULL,
     CONSTRAINT PK_ingresos PRIMARY KEY (id),
@@ -153,8 +171,6 @@ CREATE TABLE costos (
         FOREIGN KEY (cliente_id) REFERENCES clientes(id),
     CONSTRAINT FK_ingresos_productos 
         FOREIGN KEY (producto_id) REFERENCES productos(id),
-    CONSTRAINT FK_ingresos_operaciones 
-        FOREIGN KEY (operacion_id) REFERENCES operaciones(id),
     CONSTRAINT FK_ingresos_periodos 
         FOREIGN KEY (periodo_id) REFERENCES periodos(id)
 );
