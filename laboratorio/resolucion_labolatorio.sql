@@ -372,7 +372,6 @@ ORDER BY
   (SELECT SUM (importe) FROM costos i INNER JOIN clientes c ON c.id=i.cliente_id WHERE c.segmento_id=s.id) AS 'rentabilidad'
   FROM segmentos s;
 
-
   -- Con tablas temporales
 
       SELECT
@@ -410,3 +409,366 @@ ORDER BY
 
 DROP TABLE #i;
 DROP TABLE #c;
+
+/*
+Ejercicio 16 — Rentabilidad por cliente ⭐
+Determinar cuánto gana o pierde el banco con cada cliente.
+
+Mostrar:
+
+Cliente
+Ingresos
+Costos
+Rentabilidad
+Ordenar de mayor a menor rentabilidad.
+
+*/
+
+WITH ingresos_segmento AS (
+    SELECT
+        c.id,
+        SUM(i.importe) AS Ingresos
+    FROM ingresos AS i
+    INNER JOIN clientes AS c
+        ON i.cliente_id = c.id
+    GROUP BY
+        c.id
+),
+costos_segmento AS (
+    SELECT
+        c.id,
+        SUM(co.importe) AS Costos
+    FROM costos AS co
+    INNER JOIN clientes AS c
+        ON co.cliente_id = c.id
+    GROUP BY
+        c.id
+)
+SELECT
+    cl.codigo AS Cliente,
+    CASE WHEN cl.tipo_cliente='N' THEN 'Persona Natural' 
+     ELSE 'Persona Juridica' END AS 'Tipo cliente',
+    ISNULL(i.Ingresos, 0) AS Ingresos,
+    ISNULL(co.Costos, 0) AS Costos,
+    ISNULL(i.Ingresos, 0) - ISNULL(co.Costos, 0) AS Rentabilidad
+FROM clientes AS cl
+LEFT JOIN ingresos_segmento AS i
+    ON cl.id = i.id
+LEFT JOIN costos_segmento AS co
+    ON cl.id = co.id
+ORDER BY
+    2,5 DESC;
+
+/*
+Ejercicio 17 — Top 10 clientes más rentables
+Mostrar los 10 clientes con mayor rentabilidad.
+
+Concepto sugerido
+TOP
+
+*/
+DROP TABLE #rtbl_cliente;
+
+WITH ingresos_segmento AS (
+    SELECT
+        c.id,
+        SUM(i.importe) AS Ingresos
+    FROM ingresos AS i
+    INNER JOIN clientes AS c
+        ON i.cliente_id = c.id
+    GROUP BY
+        c.id
+),
+costos_segmento AS (
+    SELECT
+        c.id,
+        SUM(co.importe) AS Costos
+    FROM costos AS co
+    INNER JOIN clientes AS c
+        ON co.cliente_id = c.id
+    GROUP BY
+        c.id
+)
+SELECT
+    cl.codigo AS Cliente,
+    CASE WHEN cl.tipo_cliente='N' THEN 'Persona Natural' 
+     ELSE 'Persona Juridica' END AS 'tipo_cliente',
+    ISNULL(i.Ingresos, 0) AS Ingresos,
+    ISNULL(co.Costos, 0) AS Costos,
+    ISNULL(i.Ingresos, 0) - ISNULL(co.Costos, 0) AS Rentabilidad
+INTO #rtbl_cliente
+FROM clientes AS cl
+LEFT JOIN ingresos_segmento AS i
+    ON cl.id = i.id
+LEFT JOIN costos_segmento AS co
+    ON cl.id = co.id
+ORDER BY  5 DESC;
+
+
+SELECT 
+    RANK() OVER (ORDER BY Rentabilidad DESC) AS Puesto,
+    Cliente,
+    tipo_cliente,
+    Ingresos,
+    Costos,
+    Rentabilidad
+INTO #rtbl_cliente_ranking
+FROM #rtbl_cliente
+
+SELECT*
+FROM #rtbl_cliente_ranking
+WHERE Puesto<=10;
+
+
+--CTE
+--RANK
+WITH rtlb_ranking AS (
+SELECT 
+    RANK() OVER (ORDER BY Rentabilidad DESC) AS Puesto,
+    Cliente,
+    tipo_cliente,
+    Ingresos,
+    Costos,
+    Rentabilidad
+FROM #rtbl_cliente
+)
+SELECT * FROM rtlb_ranking;
+--WHERE Puesto<=10;
+
+--DENSE_RANK
+WITH rtlb_ranking AS (
+SELECT 
+    DENSE_RANK() OVER (ORDER BY Rentabilidad DESC) AS Puesto,
+    Cliente,
+    tipo_cliente,
+    Ingresos,
+    Costos,
+    Rentabilidad
+FROM #rtbl_cliente
+)
+SELECT * FROM rtlb_ranking
+WHERE Puesto<=10;
+
+-- ROW_NUMBER()
+
+WITH rtlb_ranking AS (
+SELECT 
+    DENSE_RANK() OVER (ORDER BY Rentabilidad DESC) AS Puesto,
+    Cliente,
+    tipo_cliente,
+    Ingresos,
+    Costos,
+    Rentabilidad
+FROM #rtbl_cliente
+)
+SELECT * FROM rtlb_ranking;
+--WHERE Puesto<=10;
+
+-- Consulta 1: calcular las 10 rentabilidades mas altas
+-- Consultados hallo la rentabilidad y pregunto si esta en el grupo de las 10 rentabilidades mas altas
+
+
+/*Ejercicio 18 — Clientes que generan pérdidas
+Encontrar clientes cuya rentabilidad sea menor que cero.
+
+Rentabilidad < 0
+Mostrar:
+
+Cliente
+Ingresos
+Costos
+Rentabilidad*/
+
+DROP TABLE #rtbl_cliente;
+
+WITH ingresos_segmento AS (
+    SELECT
+        c.id,
+        SUM(i.importe) AS Ingresos
+    FROM ingresos AS i
+    INNER JOIN clientes AS c
+        ON i.cliente_id = c.id
+    GROUP BY
+        c.id
+),
+costos_segmento AS (
+    SELECT
+        c.id,
+        SUM(co.importe) AS Costos
+    FROM costos AS co
+    INNER JOIN clientes AS c
+        ON co.cliente_id = c.id
+    GROUP BY
+        c.id
+)
+SELECT
+    cl.codigo AS Cliente,
+    CASE WHEN cl.tipo_cliente='N' THEN 'Persona Natural' 
+     ELSE 'Persona Juridica' END AS 'tipo_cliente',
+    ISNULL(i.Ingresos, 0) AS Ingresos,
+    ISNULL(co.Costos, 0) AS Costos,
+    ISNULL(i.Ingresos, 0) - ISNULL(co.Costos, 0) AS Rentabilidad
+INTO #rtbl_cliente
+FROM clientes AS cl
+LEFT JOIN ingresos_segmento AS i
+    ON cl.id = i.id
+LEFT JOIN costos_segmento AS co
+    ON cl.id = co.id
+ORDER BY  5 DESC;
+
+SELECT 
+    Cliente,
+    tipo_cliente,
+    Ingresos,
+    Costos,
+    Rentabilidad
+FROM #rtbl_cliente
+WHERE Rentabilidad < 0
+ORDER BY  5 ASC;
+
+/*
+
+🔵 NIVEL 4 — INTERMEDIO / AVANZADO
+Ahora introducimos herramientas más potentes de SQL Server.
+
+Ejercicio 19 — Clasificación de clientes por rentabilidad
+Crear una clasificación utilizando CASE:
+
+Condición	Clasificación
+Rentabilidad >= 10,000	Alta
+Rentabilidad >= 5,000	Media
+Rentabilidad >= 0	Baja
+Rentabilidad < 0	Pérdida
+
+Concepto
+CASE
+
+*/
+
+WITH ingresos_segmento AS (
+    SELECT
+        c.id,
+        SUM(i.importe) AS Ingresos
+    FROM ingresos AS i
+    INNER JOIN clientes AS c
+        ON i.cliente_id = c.id
+    GROUP BY
+        c.id
+),
+costos_segmento AS (
+    SELECT
+        c.id,
+        SUM(co.importe) AS Costos
+    FROM costos AS co
+    INNER JOIN clientes AS c
+        ON co.cliente_id = c.id
+    GROUP BY
+        c.id
+)
+SELECT
+    cl.codigo AS Cliente,
+    CASE WHEN cl.tipo_cliente='N' THEN 'Persona Natural' 
+     ELSE 'Persona Juridica' END AS 'tipo_cliente',
+    ISNULL(i.Ingresos, 0) AS Ingresos,
+    ISNULL(co.Costos, 0) AS Costos,
+    ISNULL(i.Ingresos, 0) - ISNULL(co.Costos, 0) AS Rentabilidad,
+    CASE 
+        WHEN ISNULL(i.Ingresos, 0) - ISNULL(co.Costos, 0) >= 10000 THEN 'Alta'
+        WHEN ISNULL(i.Ingresos, 0) - ISNULL(co.Costos, 0) >= 5000 THEN 'Media'
+        WHEN ISNULL(i.Ingresos, 0) - ISNULL(co.Costos, 0) >= 0 THEN 'Baja'
+    ELSE 'Pérdida' END AS 'Clasificacion'
+FROM clientes AS cl
+LEFT JOIN ingresos_segmento AS i
+    ON cl.id = i.id
+LEFT JOIN costos_segmento AS co
+    ON cl.id = co.id
+ORDER BY  5 DESC;
+
+
+
+
+
+/*
+Ejercicio 20 — Participación de cada cliente
+Calcular qué porcentaje de los ingresos totales representa cada cliente.
+
+Resultado esperado:
+
+Cliente    Ingresos    Participación
+---------  ----------  ------------
+C00001     50,000      2.35%
+C00002     30,000      1.41%
+...
+*/
+
+DECLARE @ingreso_total DECIMAL(18,4);
+SET @ingreso_total= (SELECT SUM(importe) FROM ingresos);
+
+SELECT
+c.codigo AS Cliente, 
+SUM(i.importe) AS Ingresos, 
+CONCAT(CAST( SUM(i.importe) * 100.0 / @ingreso_total AS DECIMAL(5,4) ), ' %') AS Participacion_Pct 
+INTO #prtcp_ingresos
+FROM clientes c
+LEFT JOIN ingresos i ON i.cliente_id = c.id 
+GROUP BY c.codigo 
+ORDER BY Participacion_Pct DESC;
+
+--DENSE_RANK
+SELECT
+DENSE_RANK() OVER (ORDER BY Participacion_Pct DESC) AS Ranking,*
+FROM #prtcp_ingresos
+
+--RANK
+SELECT
+RANK() OVER (ORDER BY Participacion_Pct DESC) AS Ranking,*
+FROM #prtcp_ingresos
+
+--ROW_NUMBER
+
+SELECT
+ROW_NUMBER() OVER (ORDER BY Participacion_Pct DESC) AS Ranking,*
+FROM #prtcp_ingresos
+-----------------------------------------------------------------
+
+WITH ingresos_por_cliente AS (
+    -- 1. Sumar los ingresos de cada cliente.
+    SELECT
+        c.id,
+        c.codigo,
+        ISNULL(SUM(i.importe), 0) AS ingreso_cliente
+    FROM dbo.clientes AS c
+    LEFT JOIN dbo.ingresos AS i
+        ON i.cliente_id = c.id
+    GROUP BY c.id, c.codigo
+),
+ingresos_con_total AS (
+    -- 2. Sumar los ingresos de todos los clientes.
+    SELECT
+        codigo,
+        ingreso_cliente,
+        SUM(ingreso_cliente) OVER () AS ingreso_total
+    FROM ingresos_por_cliente
+)
+-- 3. Calcular la participación de cada cliente.
+SELECT
+    codigo AS Cliente,
+    ingreso_cliente AS Ingresos,
+    ingreso_total AS TotalIngresos,
+    CONCAT(CAST(
+        ingreso_cliente / NULLIF(ingreso_total, 0) * 100.0
+        AS DECIMAL(10, 4)
+    ), '%') AS Participacion_Porcentaje
+FROM ingresos_con_total
+ORDER BY ingreso_cliente DESC, codigo;
+
+
+SELECT cl.codigo AS Cliente, 
+ISNULL(ing.Ingresos, 0) AS Ingresos,
+CONCAT( FORMAT( ISNULL(ing.Ingresos, 0) * 100.0 / SUM(ISNULL(ing.Ingresos, 0)) OVER (), 'N2' ), '%' ) AS Participacion 
+FROM clientes AS cl
+LEFT JOIN ( SELECT cliente_id, SUM(importe) AS Ingresos FROM ingresos GROUP BY cliente_id ) AS ing ON cl.id = ing.cliente_id 
+ORDER BY Ingresos DESC;
+
+
+
