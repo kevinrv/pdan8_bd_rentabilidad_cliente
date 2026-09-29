@@ -771,4 +771,238 @@ LEFT JOIN ( SELECT cliente_id, SUM(importe) AS Ingresos FROM ingresos GROUP BY c
 ORDER BY Ingresos DESC;
 
 
+--- Ejercio 22
+--Determinar quiénes son los clientes más rentables dentro de cada segmento.
 
+WITH ingresos_segmento AS (
+    SELECT
+        c.segmento_id,
+        c.id,
+        SUM(i.importe) AS Ingresos
+    FROM ingresos AS i
+    INNER JOIN clientes AS c
+        ON i.cliente_id = c.id
+    GROUP BY
+        c.segmento_id,
+        c.id
+),
+costos_segmento AS (
+    SELECT
+        c.segmento_id,
+        c.id,
+        SUM(co.importe) AS Costos
+    FROM costos AS co
+    INNER JOIN clientes AS c
+        ON co.cliente_id = c.id
+    GROUP BY
+        c.segmento_id,
+        c.id
+)
+SELECT
+    s.nombre AS 'segmento',
+    RANK() OVER  (PARTITION BY s.id ORDER BY (ISNULL(i.Ingresos, 0) - ISNULL(co.Costos, 0)) DESC)  AS Ranking,
+    cl.codigo AS Cliente,
+    CASE WHEN cl.tipo_cliente='N' THEN 'Persona Natural' 
+     ELSE 'Persona Juridica' END AS 'tipo_cliente',
+    ISNULL(i.Ingresos, 0) AS Ingresos,
+    ISNULL(co.Costos, 0) AS Costos,
+    ISNULL(i.Ingresos, 0) - ISNULL(co.Costos, 0) AS Rentabilidad,
+    CASE 
+        WHEN ISNULL(i.Ingresos, 0) - ISNULL(co.Costos, 0) >= 10000 THEN 'Alta'
+        WHEN ISNULL(i.Ingresos, 0) - ISNULL(co.Costos, 0) >= 5000 THEN 'Media'
+        WHEN ISNULL(i.Ingresos, 0) - ISNULL(co.Costos, 0) >= 0 THEN 'Baja'
+    ELSE 'Pérdida' END AS 'Clasificacion'
+INTO #T01
+FROM clientes AS cl
+INNER JOIN segmentos s ON s.id=cl.segmento_id
+LEFT JOIN ingresos_segmento AS i
+    ON cl.id = i.id
+LEFT JOIN costos_segmento AS co
+    ON cl.id = co.id
+ORDER BY  1,2 ASC;
+
+SELECT*FROM #T01
+WHERE Ranking<=5;
+
+WITH ingresos_agr AS (
+    SELECT 
+        cliente_id, 
+        SUM(importe) AS Ingresos
+    FROM ingresos
+    GROUP BY cliente_id
+),
+costos_agr AS (
+    SELECT 
+        cliente_id, 
+        SUM(importe) AS Costos
+    FROM costos
+    GROUP BY cliente_id
+),
+base_calculo AS (
+    SELECT 
+        s.id AS segmento_id,
+        s.nombre AS segmento,
+        cl.codigo AS Cliente,
+        CASE WHEN cl.tipo_cliente = 'N' THEN 'Persona Natural' ELSE 'Persona Juridica' END AS tipo_cliente,
+        ISNULL(i.Ingresos, 0) AS Ingresos,
+        ISNULL(co.Costos, 0) AS Costos,
+        ISNULL(i.Ingresos, 0) - ISNULL(co.Costos, 0) AS Rentabilidad
+    FROM clientes AS cl
+    INNER JOIN segmentos AS s 
+        ON s.id = cl.segmento_id
+    LEFT JOIN ingresos_agr AS i 
+        ON cl.id = i.cliente_id
+    LEFT JOIN costos_agr AS co 
+        ON cl.id = co.cliente_id
+),
+ranking_segmentos AS (
+    SELECT 
+        segmento,
+        RANK() OVER (PARTITION BY segmento_id ORDER BY Rentabilidad DESC) AS Ranking,
+        Cliente,
+        tipo_cliente,
+        Ingresos,
+        Costos,
+        Rentabilidad,
+        CASE 
+            WHEN Rentabilidad >= 10000 THEN 'Alta'
+            WHEN Rentabilidad >= 5000 THEN 'Media'
+            WHEN Rentabilidad >= 0 THEN 'Baja'
+            ELSE 'Pérdida' 
+        END AS Clasificacion
+    FROM base_calculo
+)
+SELECT 
+    segmento,
+    Ranking,
+    Cliente,
+    tipo_cliente,
+    Ingresos,
+    Costos,
+    Rentabilidad,
+    Clasificacion
+FROM ranking_segmentos
+WHERE Ranking <= 5
+ORDER BY segmento, Ranking ASC;
+
+WITH movimientos AS (
+    SELECT cliente_id, importe AS Ingresos, 0 AS Costos 
+    FROM ingresos
+    UNION ALL
+    SELECT cliente_id, 0 AS Ingresos, importe AS Costos 
+    FROM costos
+),
+resumen_cliente AS (
+    SELECT 
+        cliente_id,
+        SUM(Ingresos) AS Ingresos,
+        SUM(Costos) AS Costos,
+        SUM(Ingresos - Costos) AS Rentabilidad
+    FROM movimientos
+    GROUP BY cliente_id
+),
+ranking_segmentos AS (
+    SELECT 
+        s.nombre AS segmento,
+        RANK() OVER (PARTITION BY s.id ORDER BY ISNULL(rc.Rentabilidad, 0) DESC) AS Ranking,
+        cl.codigo AS Cliente,
+        CASE WHEN cl.tipo_cliente = 'N' THEN 'Persona Natural' ELSE 'Persona Juridica' END AS tipo_cliente,
+        ISNULL(rc.Ingresos, 0) AS Ingresos,
+        ISNULL(rc.Costos, 0) AS Costos,
+        ISNULL(rc.Rentabilidad, 0) AS Rentabilidad,
+        CASE 
+            WHEN ISNULL(rc.Rentabilidad, 0) >= 10000 THEN 'Alta'
+            WHEN ISNULL(rc.Rentabilidad, 0) >= 5000 THEN 'Media'
+            WHEN ISNULL(rc.Rentabilidad, 0) >= 0 THEN 'Baja'
+            ELSE 'Pérdida' 
+        END AS Clasificacion
+    FROM clientes AS cl
+    INNER JOIN segmentos AS s 
+        ON s.id = cl.segmento_id
+    LEFT JOIN resumen_cliente AS rc 
+        ON cl.id = rc.cliente_id
+)
+SELECT *
+FROM ranking_segmentos
+WHERE Ranking <= 5
+ORDER BY segmento, Ranking ASC;
+
+
+--- 23
+
+WITH ingresos_mes AS (
+    SELECT
+        periodo_id,
+        SUM(importe) AS ingresos
+    FROM ingresos
+    GROUP BY periodo_id
+),
+costos_mes AS (
+    SELECT
+        periodo_id,
+        SUM(importe) AS costos
+    FROM costos
+    GROUP BY periodo_id
+)
+SELECT
+    p.anio AS Año,
+    p.mes AS Mes,
+    ISNULL(im.ingresos, 0) AS Ingresos,
+    ISNULL(cm.costos, 0) AS Costos,
+    ISNULL(im.ingresos, 0) - ISNULL(cm.costos, 0) AS Rentabilidad
+FROM periodos p
+LEFT JOIN ingresos_mes im
+    ON p.id = im.periodo_id
+LEFT JOIN costos_mes cm
+    ON p.id = cm.periodo_id
+ORDER BY
+    p.anio,
+    p.mes;
+
+SELECT*FROM periodos;
+
+--24
+
+WITH ingresos_mes AS (
+    SELECT
+        periodo_id,
+        SUM(importe) AS ingresos
+    FROM ingresos
+    GROUP BY periodo_id
+),
+costos_mes AS (
+    SELECT
+        periodo_id,
+        SUM(importe) AS costos
+    FROM costos
+    GROUP BY periodo_id
+),
+rentabilidad_mes AS (
+    SELECT
+        p.anio AS Año,
+        p.mes AS Mes,
+        ISNULL(im.ingresos, 0) - ISNULL(cm.costos, 0) AS Rentabilidad
+    FROM periodos p
+    LEFT JOIN ingresos_mes im
+        ON p.id = im.periodo_id
+    LEFT JOIN costos_mes cm
+        ON p.id = cm.periodo_id
+),
+evolucion AS (
+    SELECT
+        Año,
+        Mes,
+        Rentabilidad,
+        LAG(Rentabilidad) OVER (
+            ORDER BY Año, Mes
+        ) AS MesAnterior
+    FROM rentabilidad_mes
+)
+SELECT
+    Año,
+    Mes,
+    Rentabilidad,
+    MesAnterior,
+    Rentabilidad - MesAnterior AS Variacion
+FROM evolucion
+ORDER BY Año, Mes;
