@@ -1006,3 +1006,121 @@ SELECT
     Rentabilidad - MesAnterior AS Variacion
 FROM evolucion
 ORDER BY Año, Mes;
+
+--- 25
+WITH ingresos_producto AS (
+    SELECT
+        producto_id,
+        SUM(importe) AS ingresos
+    FROM ingresos
+    GROUP BY producto_id
+),
+costos_producto AS (
+    SELECT
+        producto_id,
+        SUM(importe) AS costos
+    FROM costos
+    GROUP BY producto_id
+),
+rentabilidad_producto AS (
+    SELECT
+        p.codigo AS Producto,
+        p.nombre AS NombreProducto,
+        ISNULL(ip.ingresos, 0) AS Ingresos,
+        ISNULL(cp.costos, 0) AS Costos,
+        ISNULL(ip.ingresos, 0) - ISNULL(cp.costos, 0) AS Rentabilidad
+    FROM productos p
+    LEFT JOIN ingresos_producto ip
+        ON p.id = ip.producto_id
+    LEFT JOIN costos_producto cp
+        ON p.id = cp.producto_id
+)
+SELECT
+    Producto,
+    NombreProducto,
+    Ingresos,
+    Costos,
+    Rentabilidad,
+    CASE
+        WHEN Ingresos = 0 THEN 0
+        ELSE (Rentabilidad / Ingresos) * 100
+    END AS [Margen %]
+FROM rentabilidad_producto
+ORDER BY Rentabilidad DESC;
+
+SELECT 
+    pr.codigo AS Producto,
+    SUM(ISNULL(ic.total_ingresos, 0))                           AS Ingresos,
+    SUM(ISNULL(cc.total_costos, 0))                             AS Costos,
+    SUM(ISNULL(ic.total_ingresos, 0)) - SUM(ISNULL(cc.total_costos, 0)) AS Rentabilidad,
+    CAST(
+        CASE 
+            WHEN SUM(ISNULL(ic.total_ingresos, 0)) = 0 THEN NULL
+            ELSE (SUM(ISNULL(ic.total_ingresos, 0)) - SUM(ISNULL(cc.total_costos, 0))) 
+                 * 100.0 / SUM(ISNULL(ic.total_ingresos, 0))
+        END 
+    AS DECIMAL(5,2)) AS Margen_Pct
+FROM productos pr
+LEFT JOIN (
+    SELECT 
+        producto_id, 
+        SUM(importe) AS total_ingresos
+    FROM ingresos
+    GROUP BY producto_id
+) ic 
+    ON ic.producto_id = pr.id
+LEFT JOIN (
+    SELECT 
+        producto_id, 
+        SUM(importe) AS total_costos
+    FROM costos
+    GROUP BY producto_id
+) cc 
+    ON cc.producto_id = pr.id
+GROUP BY 
+    pr.codigo
+ORDER BY Rentabilidad DESC;
+
+/*Ejercicio 26 — Rentabilidad por tipo de cliente
+Comparar:
+
+Persona Natural
+Persona Jurídica
+Analizar:
+
+Cantidad de clientes.
+Ingresos.
+Costos.
+Rentabilidad.
+Rentabilidad promedio por cliente.
+*/
+
+WITH ingresos_por_cliente AS (
+    SELECT
+        c.id,
+        ISNULL(SUM(i.importe), 0) AS ingreso_cliente
+    FROM dbo.clientes AS c
+    LEFT JOIN dbo.ingresos AS i
+        ON i.cliente_id = c.id
+    GROUP BY c.id
+),
+costos_por_cliente AS (
+    SELECT
+        c.id,
+        ISNULL(SUM(i.importe), 0) AS costos_cliente
+    FROM dbo.clientes AS c
+    LEFT JOIN dbo.costos AS i
+        ON i.cliente_id = c.id
+    GROUP BY c.id
+)
+SELECT
+cl.tipo_cliente,
+COUNT(cl.id) AS 'cantidad_clientes',
+SUM(ic.ingreso_cliente) AS 'Ingresos',
+SUM(cc.costos_cliente) AS 'Costos',
+SUM(ic.ingreso_cliente)-SUM(cc.costos_cliente) AS 'Rentabilidad',
+AVG (ic.ingreso_cliente-cc.costos_cliente) AS 'rentabilidad_promedio_cliente'
+FROM clientes cl
+LEFT JOIN ingresos_por_cliente ic ON ic.id =cl.id
+LEFT JOIN costos_por_cliente cc ON cc.id=cl.id
+GROUP BY cl.tipo_cliente;
