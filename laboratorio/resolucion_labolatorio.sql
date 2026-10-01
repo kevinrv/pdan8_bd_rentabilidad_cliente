@@ -1124,3 +1124,258 @@ FROM clientes cl
 LEFT JOIN ingresos_por_cliente ic ON ic.id =cl.id
 LEFT JOIN costos_por_cliente cc ON cc.id=cl.id
 GROUP BY cl.tipo_cliente;
+
+/*
+Ejercicio 27 — Clientes con alta rentabilidad pero bajo volumen
+Buscar clientes que cumplan simultáneamente:
+
+Rentabilidad > promedio general
+y:
+
+Número de operaciones < promedio general
+El ejercicio debe resolverse utilizando una combinación de:
+
+Agregaciones.
+Subconsultas.
+CTE.*/
+
+
+WITH RentabilidadCliente AS (
+    SELECT
+        c.id AS cliente_id,
+        c.codigo,
+        COALESCE(SUM(i.importe), 0) AS ingresos,
+        COALESCE(SUM(co.importe), 0) AS costos,
+        COALESCE(SUM(i.importe), 0) - COALESCE(SUM(co.importe), 0) AS rentabilidad
+    FROM clientes c
+    LEFT JOIN ingresos i
+        ON c.id = i.cliente_id
+    LEFT JOIN costos co
+        ON c.id = co.cliente_id
+    GROUP BY
+        c.id,
+        c.codigo
+),OperacionesCliente AS (
+    SELECT
+        c.id AS cliente_id,
+        COUNT(o.id) AS numero_operaciones
+    FROM clientes c
+    LEFT JOIN operaciones o
+        ON c.id = o.cliente_id
+    GROUP BY
+        c.id
+),PromediosGenerales AS (
+    SELECT
+        AVG(rc.rentabilidad) AS promedio_rentabilidad,
+        AVG(oc.numero_operaciones) AS promedio_operaciones
+    FROM RentabilidadCliente rc
+    INNER JOIN OperacionesCliente oc
+        ON rc.cliente_id = oc.cliente_id
+)
+SELECT
+    rc.cliente_id,
+    rc.codigo,
+    rc.ingresos,
+    rc.costos,
+    rc.rentabilidad,
+    oc.numero_operaciones,
+    pg.promedio_rentabilidad,
+    pg.promedio_operaciones
+FROM RentabilidadCliente rc
+INNER JOIN OperacionesCliente oc
+    ON rc.cliente_id = oc.cliente_id
+CROSS JOIN PromediosGenerales pg
+WHERE rc.rentabilidad > pg.promedio_rentabilidad
+  AND oc.numero_operaciones < pg.promedio_operaciones
+ORDER BY rc.rentabilidad DESC;
+
+/*
+Ejercicio 28 — Producto principal de cada cliente
+Determinar cuál es el producto que representa la mayor cantidad de operaciones para cada cliente.
+
+Concepto sugerido
+ROW_NUMBER()
+OVER(
+    PARTITION BY ...
+    ORDER BY ...
+)
+*/
+SELECT*FROM operaciones;
+
+WITH operaciones_producto AS (
+    SELECT
+        ct.cliente_id,
+        c.codigo AS Cliente,
+        ct.producto_id AS producto_id,
+        p.codigo AS Producto,
+        p.nombre AS NombreProducto,
+        COUNT(o.id) AS CantidadOperaciones
+    FROM operaciones o
+    INNER JOIN clientes c
+        ON o.cliente_id = c.id
+    INNER JOIN contrataciones ct
+        ON o.contratacion_id = ct.id
+    INNER JOIN productos p
+        ON ct.producto_id = p.id
+    GROUP BY
+        ct.cliente_id,
+        c.codigo,
+        ct.producto_id,
+        p.codigo,
+        p.nombre
+),
+ranking_productos AS (
+    SELECT
+        Cliente,
+        Producto,
+        NombreProducto,
+        CantidadOperaciones,
+        ROW_NUMBER() OVER (
+            PARTITION BY Cliente
+            ORDER BY CantidadOperaciones DESC
+        ) AS Ranking
+    FROM operaciones_producto
+)
+SELECT
+    Cliente,
+    Producto,
+    NombreProducto,
+    Ranking,
+    CantidadOperaciones
+FROM ranking_productos
+WHERE Ranking = 1
+ORDER BY Cliente;
+
+/*
+Ejercicio 29 — Segmento más rentable por mes
+Para cada mes determinar cuál fue el segmento que generó mayor rentabilidad.
+
+Resultado esperado:
+
+Año  Mes  Segmento      Rentabilidad
+---  ---  ------------  ------------
+2025 01   Premium       ...
+2025 02   Corporativo   ...
+2025 03   Premium       ...
+Conceptos sugeridos
+CTE
+Window Functions
+PARTITION BY
+ROW_NUMBER()
+*/
+
+WITH RentabilidadSegmento AS (
+    SELECT
+        p.anio,
+        p.mes,
+        s.id AS segmento_id,
+        s.nombre AS segmento,
+        COALESCE(SUM(i.importe),0) AS ingresos,
+        COALESCE(SUM(c.importe),0) AS costos,
+        COALESCE(SUM(i.importe),0) - COALESCE(SUM(c.importe),0) AS rentabilidad
+    FROM periodos p
+    INNER JOIN ingresos i
+        ON p.id = i.periodo_id
+    RIGHT JOIN clientes cl
+        ON i.cliente_id = cl.id
+    INNER JOIN segmentos s
+        ON cl.segmento_id = s.id
+    LEFT JOIN costos c
+        ON c.periodo_id = p.id
+        AND c.cliente_id = cl.id
+    GROUP BY
+        p.anio,
+        p.mes,
+        s.id,
+        s.nombre
+),
+Ranking AS (
+    SELECT
+        *,
+        ROW_NUMBER() OVER (
+            PARTITION BY anio, mes
+            ORDER BY rentabilidad DESC
+        ) AS rn
+    FROM RentabilidadSegmento
+)
+SELECT
+    anio AS Año,
+    mes AS Mes,
+    segmento AS Segmento,
+    rentabilidad AS Rentabilidad
+FROM Ranking
+WHERE rn = 1 AND anio IS NOT NULL
+ORDER BY
+    anio,
+    mes;
+
+/*
+Ejercicio 30 — Detectar clientes potencialmente problemáticos ⭐⭐⭐
+El banco quiere identificar clientes que:
+
+Generan altos ingresos.
+También generan altos costos.
+Presentan una disminución de rentabilidad.
+Definir criterios apropiados y construir una consulta que identifique estos clientes.
+
+El resultado debería contener:
+
+Cliente
+Segmento
+Ingresos actuales
+Costos actuales
+Rentabilidad actual
+Rentabilidad periodo anterior
+Variación
+Nivel de riesgo
+*/
+SELECT YEAR(DATEADD(MONTH,-1,GETDATE())),MONTH(DATEADD(MONTH,-1,GETDATE()))
+
+WITH Rentabilidadanterior AS(
+ SELECT CONCAT(p.anio,p.mes) AS periodo,
+    cl.codigo,
+    s.nombre AS 'segmento',
+    COALESCE(SUM(i.importe),0)-COALESCE(SUM(c.importe),0) AS rentabilidad_anterior
+FROM clientes cl
+    INNER JOIN segmentos s ON s.id=cl.segmento_id
+    LEFT JOIN ingresos i ON i.cliente_id = cl.id
+    LEFT JOIN costos c ON c.cliente_id = cl.id
+    INNER JOIN periodos p ON p.id=i.periodo_id AND p.id=c.periodo_id
+WHERE 
+    YEAR(DATEADD(MONTH,-1,GETDATE()))= p.anio AND
+    MONTH(DATEADD(MONTH,-1,GETDATE()))= p.mes
+GROUP BY 
+    p.anio,
+    p.mes, 
+    cl.codigo,
+    s.nombre
+)
+
+SELECT
+    CONCAT(p.anio,p.mes) AS periodo,
+    cl.codigo AS 'codigo_cliente',
+    s.nombre AS 'segmento',
+    COALESCE(SUM(i.importe),0) AS ingresos,
+    COALESCE(SUM(c.importe),0) AS costos,
+    COALESCE(SUM(i.importe),0)-COALESCE(SUM(c.importe),0) AS rentabilidad,
+    ra.rentabilidad_anterior,
+    (COALESCE(SUM(i.importe),0)-COALESCE(SUM(c.importe),0)) - ra.rentabilidad_anterior AS variacion
+FROM clientes cl
+    INNER JOIN segmentos s ON s.id=cl.segmento_id
+    LEFT JOIN ingresos i ON i.cliente_id = cl.id
+    LEFT JOIN costos c ON c.cliente_id = cl.id
+    INNER JOIN periodos p ON p.id=i.periodo_id AND p.id=c.periodo_id
+    INNER JOIN Rentabilidadanterior ra ON ra.codigo=cl.codigo
+WHERE 
+    YEAR(GETDATE())= p.anio AND
+    MONTH(GETDATE())= p.mes
+GROUP BY 
+    p.anio,
+    p.mes, 
+    cl.codigo,
+    s.nombre,
+    ra.rentabilidad_anterior
+HAVING 
+    (COALESCE(SUM(i.importe),0)-COALESCE(SUM(c.importe),0)) - ra.rentabilidad_anterior <0 OR 
+    (COALESCE(SUM(i.importe),0)>'10000' AND COALESCE(SUM(C.importe),0)>'10000')
+
