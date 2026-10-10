@@ -1350,7 +1350,6 @@ GROUP BY
     cl.codigo,
     s.nombre
 )
-
 SELECT
     CONCAT(p.anio,p.mes) AS periodo,
     cl.codigo AS 'codigo_cliente',
@@ -1360,6 +1359,7 @@ SELECT
     COALESCE(SUM(i.importe),0)-COALESCE(SUM(c.importe),0) AS rentabilidad,
     ra.rentabilidad_anterior,
     (COALESCE(SUM(i.importe),0)-COALESCE(SUM(c.importe),0)) - ra.rentabilidad_anterior AS variacion
+INTO #T05
 FROM clientes cl
     INNER JOIN segmentos s ON s.id=cl.segmento_id
     LEFT JOIN ingresos i ON i.cliente_id = cl.id
@@ -1377,5 +1377,83 @@ GROUP BY
     ra.rentabilidad_anterior
 HAVING 
     (COALESCE(SUM(i.importe),0)-COALESCE(SUM(c.importe),0)) - ra.rentabilidad_anterior <0 OR 
-    (COALESCE(SUM(i.importe),0)>'10000' AND COALESCE(SUM(C.importe),0)>'10000')
+    (COALESCE(SUM(i.importe),0)>'10000' AND COALESCE(SUM(C.importe),0)>'10000');
+
+
+SELECT
+*,
+CASE WHEN variacion > 0 THEN 'Moderado'
+WHEN variacion <0 AND ABS(variacion) < rentabilidad THEN 'Alta'
+WHEN variacion <0 AND ABS(variacion) > rentabilidad THEN 'Muy alta'
+END  AS 'nivel_riesgo'
+FROM #t05;
+
+
+/*
+Ejercicio 31 — Rentabilidad acumulada
+Calcular la rentabilidad acumulada de cada cliente a través del tiempo.
+
+Ejemplo:
+
+Cliente  Mes       Rentabilidad  Acumulada
+-------  --------  ------------  ----------
+C001     Ene       1,000         1,000
+C001     Feb       1,500         2,500
+C001     Mar       -500          2,000
+Conceptos sugeridos
+SUM() OVER()
+ORDER BY
+ROWS BETWEEN
+*/
+
+WITH ingresos_mensuales AS (
+    SELECT
+        i.cliente_id,
+        p.anio,
+        p.mes,
+        ISNULL(SUM(i.importe), 0) AS ingreso_cliente
+    FROM dbo.ingresos AS i
+    INNER JOIN dbo.periodos AS p
+        ON i.periodo_id = p.id
+    GROUP BY
+        i.cliente_id,
+        p.anio,
+        p.mes
+),
+costos_mensuales AS (
+    SELECT
+        c.cliente_id,
+        p.anio,
+        p.mes,
+        ISNULL(SUM(c.importe), 0) AS costo_cliente
+    FROM dbo.costos AS c
+    INNER JOIN dbo.periodos AS p
+        ON c.periodo_id = p.id
+    GROUP BY
+        c.cliente_id,
+        p.anio,
+        p.mes
+),
+rentabilidad_mensual AS (
+    SELECT
+    cl.id AS 'cliente_id',
+    cl.codigo, 
+    p.anio,
+    p.mes,
+    ISNULL(ingreso_cliente,0) AS ingresos,
+    ISNULL(costo_cliente,0) AS cosotos,
+    ISNULL(ingreso_cliente,0) - ISNULL(costo_cliente,0) AS rentabilidad
+    FROM clientes cl
+    CROSS JOIN periodos p
+    LEFT JOIN ingresos_mensuales im ON im.cliente_id=cl.id AND im.anio=p.anio AND im.mes=p.mes
+    LEFT JOIN costos_mensuales cm ON cm.cliente_id=cl.id AND cm.anio=p.anio AND cm.mes=p.mes
+)
+SELECT
+    codigo AS 'cliente',
+    anio,
+    mes,
+    rentabilidad,
+    SUM(rentabilidad) OVER( PARTITION BY cliente_id ORDER BY anio, mes ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS 'rentabilidad_acumulada'
+FROM rentabilidad_mensual
+ORDER BY 1,2,3
 
