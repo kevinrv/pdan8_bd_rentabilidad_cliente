@@ -1442,7 +1442,7 @@ rentabilidad_mensual AS (
     p.mes,
     ISNULL(ingreso_cliente,0) AS ingresos,
     ISNULL(costo_cliente,0) AS cosotos,
-    ISNULL(ingreso_cliente,0) - ISNULL(costo_cliente,0) AS rentabilidad
+    dbo.fn_calcular_rentabilidad(ISNULL(ingreso_cliente,0) , ISNULL(costo_cliente,0)) AS rentabilidad
     FROM clientes cl
     CROSS JOIN periodos p
     LEFT JOIN ingresos_mensuales im ON im.cliente_id=cl.id AND im.anio=p.anio AND im.mes=p.mes
